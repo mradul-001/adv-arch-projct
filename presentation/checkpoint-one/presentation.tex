@@ -1,4 +1,4 @@
-\documentclass[9pt]{beamer}
+\documentclass[10pt]{beamer}
 \usepackage{graphicx}
 \usepackage{enumitem}
 \usepackage{tikz}
@@ -14,6 +14,10 @@
           inner xsep=8pt, inner ysep=6pt, text width=0.92\linewidth, align=center]
       {\normalsize #1};
   \end{tikzpicture}}
+% Reveal TikZ parts step by step: [visible on=<2->]
+\tikzset{invisible/.style={opacity=0, text opacity=0},
+  visible on/.style={alt={#1{}{invisible}}},
+  alt/.code args={<#1>#2#3}{\alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}}}}
 \newcommand{\good}{{\color{mLightGreen}\ding{51}}}
 \newcommand{\bad}{{\color{mLightBrown}\ding{55}}}
 
@@ -37,7 +41,8 @@
 % \setbeamertemplate{institute}{\vspace*{0mm}\insertinstitute\par}
 \setbeamersize{text margin left=1.5cm, text margin right=1.5cm}
 \setlist[itemize,1]{label=\small$\bullet$}
-\setbeamertemplate{footline}{}
+% slide numbers bottom-right (Metropolis default footer)
+\setbeamertemplate{frame numbering}[counter]
 \setbeamertemplate{navigation symbols}{}
 
 \title{LoGO: Combining Local Deltas and Global Offsets for Data Prefetching}
@@ -177,17 +182,17 @@
     \draw[->, thick, black!55] (a) -- (da);
     \draw[->, thick, black!25, dashed] (c) -- (dc);
     \draw[->, thick, mLightBrown, dashed] (c.south east) to[bend right=15] (d.west);
-  \end{tikzpicture}\\[0.5cm]
+  \end{tikzpicture}\\[0.3cm]
 
   % The question, in one line
   \begin{tikzpicture}
     \node[fill=mDarkTeal!8, draw=mDarkTeal!40, rounded corners=3pt,
           inner xsep=10pt, inner ysep=8pt, text width=0.85\linewidth, align=center]
       {\large Can a global offset fill Berti's silence\\without losing accuracy?};
-  \end{tikzpicture}\\[0.5cm]
+  \end{tikzpicture}\\[0.3cm]
 
   % What checkpoint 1 measures (answered on the next slides)
-  \begin{minipage}{0.75\linewidth}
+  \begin{minipage}{0.88\linewidth}
     \textbf{We ask a few questions here:}
     \begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}, itemsep=2pt]
       \item How many misses happen while Berti is silent?
@@ -204,16 +209,16 @@
     lvl/.style={draw=none, rounded corners=2pt, minimum width=2.6cm,
                 minimum height=0.5cm, font=\small, text=white},
     chip/.style={draw=mDarkTeal!35, fill=mDarkTeal!6, rounded corners=2pt,
-                 inner xsep=4pt, inner ysep=2.5pt, font=\small},
+                 inner xsep=4pt, inner ysep=2.5pt, font=\footnotesize},
     cfg/.style={draw=none, fill=mDarkTeal!80, text=white, rounded corners=2pt,
-                inner xsep=6pt, inner ysep=4pt, font=\small},
+                inner xsep=6pt, inner ysep=4pt, font=\footnotesize},
     >={Stealth[length=1.6mm]}}
 
   \begin{columns}[T,onlytextwidth]
     % ---- The machine -------------------------------------------------------
-    \begin{column}{0.36\textwidth}
+    \begin{column}{0.33\textwidth}
       \centering
-      {\large\textbf{Simulated machine}}\\[0.25cm]
+      {\large\textbf{Machine}}\\[0.25cm]
       \begin{tikzpicture}[node distance=0.30cm]
         \node[lvl, fill=mDarkTeal!45] (c)  {Out-of-order core};
         \node[lvl, fill=mDarkTeal!60, below=of c]  (l1) {L1D \; 48 KB};
@@ -225,28 +230,29 @@
         \node[overlay, font=\scriptsize, text=mLightBrown!90!black, anchor=east]
           at ([xshift=-0.12cm]l1.west) {prefetcher \(\rightarrow\)};
       \end{tikzpicture}\\[0.25cm]
-      {\small ChampSim simulator, 1 core\\
+      {\small ChampSim, 1 core\\
        50M + 200M instructions\\
        {\scriptsize\color{black!55}(warm-up + measured)}}
     \end{column}
     % ---- Workloads + what we compare -----------------------------------------
-    \begin{column}{0.62\textwidth}
+    \begin{column}{0.65\textwidth}
       \centering
-      {\small
+      {\footnotesize
       \begin{tikzpicture}[
-          rowlbl/.style={anchor=east, font=\small, text=black!75},
+          rowlbl/.style={anchor=east, font=\footnotesize, text=black!75},
           gx/.style={anchor=west, inner xsep=0pt, inner ysep=3pt}]
         % Column widths = widest name in each column, so every row spans the same width
-        \pgfmathsetlengthmacro{\wa}{width("bwaves")+6pt}
-        \pgfmathsetlengthmacro{\wb}{width("PageRank")+6pt}
-        \pgfmathsetlengthmacro{\wc}{width("Conn. Comp.")+6pt}
+        \pgfmathsetlengthmacro{\wa}{width("bwaves")+4pt}
+        \pgfmathsetlengthmacro{\wb}{width("PageRank")+4pt}
+        \pgfmathsetlengthmacro{\wc}{width("Conn. Comp.")+4pt}
         \pgfmathsetlengthmacro{\gap}{3pt}
         \pgfmathsetlengthmacro{\xb}{\wa+\gap}
         \pgfmathsetlengthmacro{\xc}{\wa+\wb+2*\gap}
         \pgfmathsetlengthmacro{\W}{\wa+\wb+\wc+2*\gap}
         \pgfmathsetlengthmacro{\half}{(\W-\gap)/2}
 
-        \node[font=\large\bfseries, anchor=south] at (\W/2, 0.35) {9 program traces};
+        \begin{scope}[visible on=<2->]
+        \node[font=\large\bfseries, anchor=south] at (\W/2, 0.35) {Traces (9 programs)};
         \foreach \y/\lbl/\p/\q/\r in {0/Regular/bwaves/lbm/fotonik3d,
                                        -0.75/Irregular/mcf/omnetpp/xalancbmk,
                                        -1.5/Graph/BFS/PageRank/{Conn.\ Comp.}} {
@@ -257,15 +263,18 @@
         }
         \node[font=\scriptsize, text=black!55, anchor=north] at (\W/2, -1.85)
           {6 standard CPU benchmarks + 3 graph algorithms};
+        \end{scope}
 
         % What we compare: 2x2 grid spanning the same width as the traces
-        \node[font=\large\bfseries, anchor=south] at (\W/2, -3.05) {We compare at L1D};
+        \begin{scope}[visible on=<3->]
+        \node[font=\large\bfseries, anchor=south] at (\W/2, -3.05) {Prefetchers (at L1D)};
         \node[cfg, gx, minimum width=\half, fill=black!45] at (0, -3.45) {No prefetching};
         \node[cfg, gx, minimum width=\half, fill=cIP] at (\half+\gap, -3.45) {IP-stride};
         \node[cfg, gx, minimum width=\half, fill=cBOP] at (0, -4.15) {BOP\textsuperscript{*}};
         \node[cfg, gx, minimum width=\half, fill=cBerti] at (\half+\gap, -4.15) {Berti};
         \node[font=\scriptsize, text=black!55, anchor=north] at (\W/2, -4.55)
           {$\ast$ implemented from the BOP paper (HPCA 2016)};
+        \end{scope}
       \end{tikzpicture}}
     \end{column}
   \end{columns}
@@ -276,8 +285,8 @@
   \centering
   \begin{tikzpicture}[
       stage/.style={draw=none, fill=mDarkTeal!80, text=white, rounded corners=2pt,
-                    text width=2.3cm, align=center, minimum height=1.1cm,
-                    font=\small, inner sep=4pt},
+                    text width=2.45cm, align=center, minimum height=1.05cm,
+                    font=\small, inner sep=3pt},
       side/.style={draw=black!30, fill=black!4, text=black!70, rounded corners=2pt,
                    text width=2.3cm, align=center, font=\footnotesize, inner sep=3pt},
       q/.style={circle, fill=mLightGreen!85!black, text=white, inner sep=1.5pt,
@@ -285,50 +294,60 @@
       lbl/.style={font=\footnotesize, text=black!60},
       >={Stealth[length=1.8mm]}]
 
-    % Row 1: is Berti silent?
-    \node[stage, fill=black!45]    (load)   at (0,0)   {Every L1D load};
-    \node[stage]                   (conf)   at (3.4,0) {Berti confident\\for this IP?};
-    \node[stage, fill=mLightBrown] (silent) at (6.8,0) {Silent miss\\(counted per IP)};
+    % Step 1: every load asks Berti
+    \node[stage, fill=black!45]    (load)   at (0,0) {Every L1D load};
+    \node[stage]                   (conf)   at (3.4,0) {Berti confident\\for this load?};
     \draw[->, thick, black!50] (load) -- (conf);
-    \draw[->, thick, black!50] (conf) -- node[lbl, above] {no} (silent);
-
-    \node[side] (normal) at (3.4,1.50) {Berti prefetches as usual};
+    \node[side] (normal) at (3.4,1.35) {Berti prefetches as usual};
     \draw[->, black!40] (conf) -- node[lbl, right] {yes} (normal);
 
-    % Row 2: would a global offset have caught it?
-    \node[stage, fill=white, text=mDarkTeal, draw=mDarkTeal, dashed]
-                                   (shadow) at (6.8,-2.1) {Shadow BOP\\guesses X\,+\,D};
-    \node[stage]                   (caught) at (3.4,-2.1) {Later miss on a\\listed line? Caught};
-    \node[stage, fill=mDarkTeal!55](acc)    at (0,-2.1)   {Accuracy =\\caught {\(\div\)} guesses};
-    \draw[->, thick, black!50] (silent) -- (shadow);
-    \draw[->, thick, black!50] (shadow) -- (caught);
-    \draw[->, thick, black!50] (caught) -- (acc);
-    \node[lbl, below=0.1cm of shadow] {watch only, never issued};
+    % Step 2: no -> silent miss (Q1)
+    \begin{scope}[visible on=<2->]
+      \node[stage, fill=mLightBrown] (silent) at (6.8,0) {Silent miss\\(per load)};
+      \draw[->, thick, black!50] (conf) -- node[lbl, above] {no} (silent);
+      \node[q] at (silent.north east) {Q1};
+    \end{scope}
 
-    % Which question each box answers
-    \node[q] at (silent.north east) {Q1};
-    \node[q] at (caught.north east) {Q2};
-    \node[q] at (acc.north east)    {Q3};
-  \end{tikzpicture}\\[0.7cm]
+    % Step 3: watch-only BOP guesses
+    \begin{scope}[visible on=<3->]
+      \node[stage, fill=white, text=mDarkTeal, draw=mDarkTeal, dashed]
+                                     (shadow) at (6.8,-1.95) {Shadow BOP\\guesses X\,+\,D};
+      \draw[->, thick, black!50] (6.8,-0.53) -- (shadow);
+      \node[lbl, below=0.08cm of shadow] {watch only, never issued};
+    \end{scope}
 
-  % How "caught" is decided without issuing anything
+    % Step 4: caught (Q2)
+    \begin{scope}[visible on=<4->]
+      \node[stage] (caught) at (3.4,-1.95) {Later miss on a\\listed line? Caught};
+      \draw[->, thick, black!50] (shadow) -- (caught);
+      \node[q] at (caught.north east) {Q2};
+    \end{scope}
+
+    % Step 5: accuracy (Q3)
+    \begin{scope}[visible on=<5->]
+      \node[stage, fill=mDarkTeal!55] (acc) at (0,-1.95) {Accuracy =\\{\footnotesize caught {\(\div\)} guesses}};
+      \draw[->, thick, black!50] (caught) -- (acc);
+      \node[q] at (acc.north east) {Q3};
+    \end{scope}
+  \end{tikzpicture}\\[0.45cm]
+
+  % How "caught" is decided without issuing anything (with step 4)
+  \visible<4->{%
   \begin{tikzpicture}
     \node[fill=mDarkTeal!8, draw=mDarkTeal!40, rounded corners=3pt,
-          inner xsep=8pt, inner ysep=6pt, text width=0.92\linewidth, align=left]
-      {\textbf{How do we know a guess would have helped?}\\[3pt]
+          inner xsep=8pt, inner ysep=5pt, text width=0.92\linewidth, align=left]
+      {\textbf{How do we know a guess would have helped?}\\[2pt]
        {\small
-       \textbf{1.}\ Store X\,+\,D in a \emph{would-prefetch list} (L1D-sized: 768 lines)\\[1pt]
-       \textbf{2.}\ A later miss on a listed line would have been a hit \(\rightarrow\) caught\\[3pt]
-    %    {\scriptsize\color{black!55}Estimate: ignores prefetch timing and cache pollution, so it is optimistic.}}};
-       }};
-\end{tikzpicture}
+       \textbf{1.}\ Store X\,+\,D in a \emph{would-prefetch list} (768 lines, L1D size)\\[1pt]
+       \textbf{2.}\ A later miss on a listed line would have hit \(\rightarrow\) caught}};
+  \end{tikzpicture}}
 \end{frame}
 
 % ---------------------------------------------------------------------------
 \begin{frame}{Baselines: Speedup}
   \centering
   \msg{\textbf{Berti is the strongest baseline:} 1.16$\times$ on average}\\[0.3cm]
-  \includegraphics[width=\linewidth]{figs/speedup.pdf}
+  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/speedup.pdf}
 \end{frame}
 
 % ---------------------------------------------------------------------------
@@ -336,7 +355,7 @@
   \centering
   \msg{\textbf{Berti stays accurate by staying silent;}\\
        BOP's guesses collapse on irregular and graph code}\\[0.3cm]
-  \includegraphics[width=0.93\linewidth]{figs/accuracy.pdf}\\[0.1cm]
+  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/accuracy.pdf}\\[0.1cm]
   {\scriptsize\color{black!55}Prefetches used = of all lines prefetched, the share the program actually used.}
 \end{frame}
 
@@ -345,15 +364,15 @@
   \centering
   \msg{On irregular and graph code, \textbf{68--99\%} of Berti's misses\\
        happen while Berti is silent}\\[0.3cm]
-  \includegraphics[width=0.93\linewidth]{figs/gap.pdf}
+  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/gap.pdf}
 \end{frame}
 
 % ---------------------------------------------------------------------------
 \begin{frame}{Q2 + Q3: Can a Global Offset Fill It?}
   \centering
-  \msg{\textbf{Mostly no:} on irregular and graph code it catches 2--30\% of\\
-       the silent misses, and only 3--37\% of its guesses are used}\\[0.3cm]
-  \includegraphics[width=0.88\linewidth]{figs/fallback.pdf}\\[0.1cm]
+  \msg{\textbf{Mostly no:} it catches $\le$30\% of silent misses,\\
+       and $\le$37\% of its guesses are right}\\[0.3cm]
+  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/fallback.pdf}\\[0.1cm]
   {\small Regular code: accurate guesses, but little left to catch}
 \end{frame}
 
@@ -361,7 +380,7 @@
 \begin{frame}{Who Causes the Gap?}
   \centering
   \msg{\textbf{A few hot instructions, not cold ones}}\\[0.3cm]
-  \includegraphics[width=0.93\linewidth]{figs/concentration.pdf}\\[0.15cm]
+  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/concentration.pdf}\\[0.15cm]
   {\small Instructions with $<$1{,}000 loads cause $\le$0.2\% of silent misses\\
    on irregular and graph code}
 \end{frame}

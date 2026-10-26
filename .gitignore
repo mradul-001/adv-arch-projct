@@ -42,3 +42,4 @@ __pycache__/
 !/Berti-Artifact/ChampSim/Berti/prefetcher/vberti_size.h
 !/Berti-Artifact/ChampSim/Berti/prefetcher/berti_gap.l1d_pref
 /scripts/
+script.md
