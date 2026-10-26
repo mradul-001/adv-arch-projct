@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Large or rebuildable: recreate with the scripts instead
+# ---------------------------------------------------------------------------
+# traces (4.7 GB): scripts/download_traces.sh
+/traces/
+# simulator binaries: scripts/build_all.sh
+/bin/
+# Python env: pip install -r requirements.txt
+/.venv/
+__pycache__/
+
+# ---------------------------------------------------------------------------
+# Not used by the project
+# ---------------------------------------------------------------------------
+# latest ChampSim from the first setup attempt (replaced) and its configs
+/ChampSim/
+/configs/
+# short setup/sanity runs, not part of the results
+/results/speedtest/
+# course template (31 MB) and LibreOffice lock files
+/CS683-2026-Project-Proposal-Template.pptx
+.~lock.*
+
+# ---------------------------------------------------------------------------
+# Berti artifact: whitelist only what is needed to build our 5 simulators
+# (the authors' simulator; other prefetchers and tooling are left out)
+# ---------------------------------------------------------------------------
+/Berti-Artifact/*
+!/Berti-Artifact/LICENSE
+!/Berti-Artifact/README.md
+!/Berti-Artifact/ChampSim/
+/Berti-Artifact/ChampSim/*
+!/Berti-Artifact/ChampSim/Berti/
+/Berti-Artifact/ChampSim/Berti/*
+!/Berti-Artifact/ChampSim/Berti/LICENSE
+!/Berti-Artifact/ChampSim/Berti/README.md
+!/Berti-Artifact/ChampSim/Berti/Makefile
+!/Berti-Artifact/ChampSim/Berti/build_champsim.sh
+!/Berti-Artifact/ChampSim/Berti/src/
+!/Berti-Artifact/ChampSim/Berti/inc/
+!/Berti-Artifact/ChampSim/Berti/branch/
+!/Berti-Artifact/ChampSim/Berti/replacement/
+!/Berti-Artifact/ChampSim/Berti/prefetcher/
+
+# inc/: stray backup files left by the authors
+/Berti-Artifact/ChampSim/Berti/inc/*.bak
+/Berti-Artifact/ChampSim/Berti/inc/*.cp
+/Berti-Artifact/ChampSim/Berti/inc/sedD2leEO
+
+# branch/: only the predictor we use (branch_predictor.cc is a build-time copy)
+/Berti-Artifact/ChampSim/Berti/branch/*
+!/Berti-Artifact/ChampSim/Berti/branch/hashed_perceptron.bpred
+
+# replacement/: only the policies we use (*_replacement.cc are build-time copies,
+# except base_replacement.cc, which is real source)
+/Berti-Artifact/ChampSim/Berti/replacement/*
+!/Berti-Artifact/ChampSim/Berti/replacement/base_replacement.cc
+!/Berti-Artifact/ChampSim/Berti/replacement/lru.*_repl
+!/Berti-Artifact/ChampSim/Berti/replacement/srrip.l2c_repl
+!/Berti-Artifact/ChampSim/Berti/replacement/drrip.llc_repl
+
+# prefetcher/: only our 5 L1D prefetchers + the "no" files for the other levels
+# (*_prefetcher.cc are build-time copies)
+/Berti-Artifact/ChampSim/Berti/prefetcher/*
+!/Berti-Artifact/ChampSim/Berti/prefetcher/no.*_pref
+!/Berti-Artifact/ChampSim/Berti/prefetcher/ip_stride.l1d_pref
+!/Berti-Artifact/ChampSim/Berti/prefetcher/bop.l1d_pref
+!/Berti-Artifact/ChampSim/Berti/prefetcher/vberti.l1d_pref
+!/Berti-Artifact/ChampSim/Berti/prefetcher/vberti.h
+!/Berti-Artifact/ChampSim/Berti/prefetcher/vberti_size.h
+!/Berti-Artifact/ChampSim/Berti/prefetcher/berti_gap.l1d_pref

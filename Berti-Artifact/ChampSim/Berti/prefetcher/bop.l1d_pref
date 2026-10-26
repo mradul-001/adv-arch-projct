@@ -1,0 +1,221 @@
+// Best-Offset Prefetcher (BOP), placed at L1D.
+//
+// Follows Michaud, "Best-Offset Hardware Prefetching", HPCA 2016:
+//   - candidate offsets: numbers of the form 2^i * 3^j * 5^k up to 60 lines
+//   - one candidate offset is tested per trigger access, in round-robin order
+//   - a learning phase ends after ROUND_MAX rounds or when a score hits SCORE_MAX
+//   - the best offset is used until the next phase ends; prefetching turns
+//     off for a phase if the best score is <= BAD_SCORE
+//   - trigger access = L1D miss, or L1D hit on a line that was prefetched
+//   - recent-requests (RR) table: on fill of a prefetched line Y, insert
+//     Y - D (D = offset in use); with prefetching off, insert Y on demand fills
+//   - degree 1
+//
+// L1D adaptation (same convention as Berti in this simulator):
+//   - works on virtual line addresses
+//   - prefetches may cross 4 KB page boundaries
+
+#include "cache.h"
+
+#include <cstdint>
+#include <iostream>
+
+// Hook required by this ChampSim fork's cache.cc; BOP doesn't use it.
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle) {}
+
+namespace bop {
+
+constexpr int OFFSETS[] = {1,  2,  3,  4,  5,  6,  8,  9,  10, 12, 15, 16, 18,
+                           20, 24, 25, 27, 30, 32, 36, 40, 45, 48, 50, 54, 60};
+constexpr int NUM_OFFSETS = sizeof(OFFSETS) / sizeof(OFFSETS[0]);
+
+constexpr int SCORE_MAX = 31;
+constexpr int ROUND_MAX = 100;
+constexpr int BAD_SCORE = 1;
+constexpr int RR_SIZE = 256; // direct-mapped
+
+// Copy of the L1D tags as virtual lines, plus a "prefetched, not yet used"
+// bit. L1D is VIPT here, so real block tags are physical and can't be
+// matched against the virtual address the hook receives (Berti does the same).
+struct ShadowLine {
+    uint64_t line = 0;
+    bool pf = false;
+};
+
+struct State {
+    ShadowLine shadow[L1D_SET][L1D_WAY];
+
+    // Recent-requests table (line addresses, 0 = empty).
+    uint64_t rr[RR_SIZE] = {};
+
+    // Learning state.
+    int scores[NUM_OFFSETS] = {};
+    int test_idx = 0;  // next offset to test
+    int round = 0;     // completed passes over all offsets
+
+    // Result of the last phase.
+    int best_offset = 1;
+    bool prefetch_on = true;
+
+    // Stats.
+    uint64_t triggers = 0;
+    uint64_t prefetched_hits = 0;
+    uint64_t phases = 0;
+    uint64_t phases_off = 0;
+    uint64_t phase_end_score = 0;
+    uint64_t phase_end_round = 0;
+    uint64_t issued = 0;
+    uint64_t offset_hist[NUM_OFFSETS] = {};
+};
+
+State st[NUM_CPUS];
+
+inline uint32_t rr_index(uint64_t line)
+{
+    return (line ^ (line >> 8)) & (RR_SIZE - 1);
+}
+
+inline bool rr_hit(const State& s, uint64_t line)
+{
+    return line != 0 && s.rr[rr_index(line)] == line;
+}
+
+inline void rr_insert(State& s, uint64_t line)
+{
+    s.rr[rr_index(line)] = line;
+}
+
+inline int offset_index(int offset)
+{
+    for (int i = 0; i < NUM_OFFSETS; i++)
+        if (OFFSETS[i] == offset)
+            return i;
+    return 0;
+}
+
+void end_phase(State& s)
+{
+    int best = 0;
+    for (int i = 1; i < NUM_OFFSETS; i++)
+        if (s.scores[i] > s.scores[best])
+            best = i;
+
+    s.best_offset = OFFSETS[best];
+    s.prefetch_on = s.scores[best] > BAD_SCORE;
+
+    s.phases++;
+    if (!s.prefetch_on)
+        s.phases_off++;
+    s.offset_hist[best]++;
+
+    for (int i = 0; i < NUM_OFFSETS; i++)
+        s.scores[i] = 0;
+    s.test_idx = 0;
+    s.round = 0;
+}
+
+// Test one candidate offset against the RR table for trigger line X.
+void learn(State& s, uint64_t line)
+{
+    int idx = s.test_idx;
+    if (rr_hit(s, line - OFFSETS[idx])) {
+        s.scores[idx]++;
+        if (s.scores[idx] >= SCORE_MAX) {
+            s.phase_end_score++;
+            end_phase(s);
+            return;
+        }
+    }
+
+    s.test_idx++;
+    if (s.test_idx == NUM_OFFSETS) {
+        s.test_idx = 0;
+        s.round++;
+        if (s.round >= ROUND_MAX) {
+            s.phase_end_round++;
+            end_phase(s);
+        }
+    }
+}
+
+} // namespace bop
+
+void CACHE::l1d_prefetcher_initialize()
+{
+    std::cout << "CPU " << cpu << " L1D Best-Offset prefetcher (BOP)" << std::endl;
+}
+
+void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
+                                   uint8_t type, uint8_t critical_ip_flag)
+{
+    bop::State& s = bop::st[cpu];
+    uint64_t line = addr >> LOG2_BLOCK_SIZE;
+
+    // Only misses and hits on prefetched lines train and trigger BOP.
+    if (cache_hit) {
+        bool pf_hit = false;
+        for (auto& w : s.shadow[get_set(line)]) {
+            if (w.line == line && w.pf) {
+                w.pf = false; // first demand use only
+                pf_hit = true;
+                break;
+            }
+        }
+        if (!pf_hit)
+            return;
+        s.prefetched_hits++;
+    }
+    s.triggers++;
+
+    bop::learn(s, line);
+
+    if (s.prefetch_on) {
+        uint64_t pf_addr = (line + s.best_offset) << LOG2_BLOCK_SIZE;
+        if (prefetch_line(ip, addr, pf_addr, FILL_L1, 0))
+            s.issued++;
+    }
+}
+
+void CACHE::l1d_prefetcher_notify_about_dtlb_eviction(uint64_t addr, uint32_t set,
+                                                      uint32_t way, uint8_t prefetch,
+                                                      uint64_t evicted_addr,
+                                                      uint32_t metadata_in)
+{
+}
+
+void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr, uint32_t set,
+                                      uint32_t way, uint8_t prefetch,
+                                      uint64_t v_evicted_addr, uint64_t evicted_addr,
+                                      uint32_t metadata_in)
+{
+    bop::State& s = bop::st[cpu];
+    uint64_t line = v_addr >> LOG2_BLOCK_SIZE;
+
+    if (set < L1D_SET && way < L1D_WAY) {
+        s.shadow[set][way].line = line;
+        s.shadow[set][way].pf = prefetch != 0;
+    }
+
+    if (prefetch) {
+        // Base address that would have triggered this prefetch.
+        bop::rr_insert(s, line - s.best_offset);
+    } else if (!s.prefetch_on) {
+        bop::rr_insert(s, line);
+    }
+}
+
+void CACHE::l1d_prefetcher_final_stats()
+{
+    bop::State& s = bop::st[cpu];
+    std::cout << "BOP triggers: " << s.triggers
+              << " prefetched_hits: " << s.prefetched_hits
+              << " issued: " << s.issued << std::endl;
+    std::cout << "BOP phases: " << s.phases << " off: " << s.phases_off
+              << " end_by_score: " << s.phase_end_score
+              << " end_by_round: " << s.phase_end_round << std::endl;
+    std::cout << "BOP best-offset histogram:";
+    for (int i = 0; i < bop::NUM_OFFSETS; i++)
+        if (s.offset_hist[i])
+            std::cout << " " << bop::OFFSETS[i] << ":" << s.offset_hist[i];
+    std::cout << std::endl;
+}
