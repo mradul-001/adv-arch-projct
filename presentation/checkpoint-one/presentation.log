@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.8.10)  26 OCT 2026 19:40
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.8.10)  26 OCT 2026 21:16
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1280,7 +1280,7 @@ LaTeX Font Info:    Font shape `T1/FiraSans-LF/light/n' will be
 File: figs/speedup.pdf Graphic file (type pdf)
 <use figs/speedup.pdf>
 Package pdftex.def Info: figs/speedup.pdf  used on input line 351.
-(pdftex.def)             Requested size: 243.17654pt x 137.55681pt.
+(pdftex.def)             Requested size: 277.91931pt x 157.20963pt.
  [13
 
  <./figs/speedup.pdf>]
@@ -1288,7 +1288,7 @@ Package pdftex.def Info: figs/speedup.pdf  used on input line 351.
 File: figs/accuracy.pdf Graphic file (type pdf)
 <use figs/accuracy.pdf>
 Package pdftex.def Info: figs/accuracy.pdf  used on input line 360.
-(pdftex.def)             Requested size: 240.2479pt x 137.55681pt.
+(pdftex.def)             Requested size: 257.41231pt x 147.3845pt.
  [14
 
  <./figs/accuracy.pdf>]
@@ -1296,7 +1296,7 @@ Package pdftex.def Info: figs/accuracy.pdf  used on input line 360.
 File: figs/gap.pdf Graphic file (type pdf)
 <use figs/gap.pdf>
 Package pdftex.def Info: figs/gap.pdf  used on input line 368.
-(pdftex.def)             Requested size: 207.63647pt x 137.55681pt.
+(pdftex.def)             Requested size: 237.3016pt x 157.20963pt.
  [15
 
  <./figs/gap.pdf>]
@@ -1304,7 +1304,7 @@ Package pdftex.def Info: figs/gap.pdf  used on input line 368.
 File: figs/fallback.pdf Graphic file (type pdf)
 <use figs/fallback.pdf>
 Package pdftex.def Info: figs/fallback.pdf  used on input line 377.
-(pdftex.def)             Requested size: 198.6528pt x 137.51045pt.
+(pdftex.def)             Requested size: 212.8428pt x 147.333pt.
  [16
 
  <./figs/fallback.pdf>]
@@ -1312,7 +1312,7 @@ Package pdftex.def Info: figs/fallback.pdf  used on input line 377.
 File: figs/concentration.pdf Graphic file (type pdf)
 <use figs/concentration.pdf>
 Package pdftex.def Info: figs/concentration.pdf  used on input line 386.
-(pdftex.def)             Requested size: 234.4623pt x 137.5465pt.
+(pdftex.def)             Requested size: 251.21323pt x 147.37337pt.
  [17
 
  <./figs/concentration.pdf>] [18
@@ -1327,30 +1327,30 @@ Overfull \vbox (1.0778pt too high) detected at line 444
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/l/n' in size <20.74> not availab
 le
 (Font)              Font shape `T1/FiraSans-LF/light/n' tried instead on input 
-line 454.
+line 453.
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/light/n' will be
-(Font)              scaled to size 20.74pt on input line 454.
+(Font)              scaled to size 20.74pt on input line 453.
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/m/it' in size <14.4> not availab
 le
 (Font)              Font shape `T1/FiraSans-LF/regular/it' tried instead on inp
-ut line 454.
+ut line 453.
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/regular/it' will be
-(Font)              scaled to size 14.4pt on input line 454.
+(Font)              scaled to size 14.4pt on input line 453.
  [20
 
 ]
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/l/n' in size <24.88> not availab
 le
 (Font)              Font shape `T1/FiraSans-LF/light/n' tried instead on input 
-line 459.
+line 458.
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/light/n' will be
-(Font)              scaled to size 24.88pt on input line 459.
+(Font)              scaled to size 24.88pt on input line 458.
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/m/n' in size <24.88> not availab
 le
 (Font)              Font shape `T1/FiraSans-LF/regular/n' tried instead on inpu
-t line 459.
+t line 458.
 LaTeX Font Info:    Font shape `T1/FiraSans-LF/regular/n' will be
-(Font)              scaled to size 24.88pt on input line 459.
+(Font)              scaled to size 24.88pt on input line 458.
  [21
 
 ]
@@ -1388,7 +1388,7 @@ e/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf
 -dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/f
 onts/type1/public/amsfonts/cm/cmsy9.pfb></usr/share/texlive/texmf-dist/fonts/ty
 pe1/urw/zapfding/uzdr.pfb>
-Output written on presentation.pdf (21 pages, 286230 bytes).
+Output written on presentation.pdf (21 pages, 286221 bytes).
 PDF statistics:
  462 PDF objects out of 1000 (max. 8388607)
  172 compressed objects within 2 object streams

@@ -347,7 +347,7 @@
 \begin{frame}{Baselines: Speedup}
   \centering
   \msg{\textbf{Berti is the strongest baseline:} 1.16$\times$ on average}\\[0.3cm]
-  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/speedup.pdf}
+  \includegraphics[width=\linewidth,height=0.64\textheight,keepaspectratio]{figs/speedup.pdf}
 \end{frame}
 
 % ---------------------------------------------------------------------------
@@ -355,7 +355,7 @@
   \centering
   \msg{\textbf{Berti stays accurate by staying silent;}\\
        BOP's guesses collapse on irregular and graph code}\\[0.3cm]
-  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/accuracy.pdf}\\[0.1cm]
+  \includegraphics[width=\linewidth,height=0.6\textheight,keepaspectratio]{figs/accuracy.pdf}\\[0.1cm]
   {\scriptsize\color{black!55}Prefetches used = of all lines prefetched, the share the program actually used.}
 \end{frame}
 
@@ -364,7 +364,7 @@
   \centering
   \msg{On irregular and graph code, \textbf{68--99\%} of Berti's misses\\
        happen while Berti is silent}\\[0.3cm]
-  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/gap.pdf}
+  \includegraphics[width=\linewidth,height=0.64\textheight,keepaspectratio]{figs/gap.pdf}
 \end{frame}
 
 % ---------------------------------------------------------------------------
@@ -372,7 +372,7 @@
   \centering
   \msg{\textbf{Mostly no:} it catches $\le$30\% of silent misses,\\
        and $\le$37\% of its guesses are right}\\[0.3cm]
-  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/fallback.pdf}\\[0.1cm]
+  \includegraphics[width=\linewidth,height=0.6\textheight,keepaspectratio]{figs/fallback.pdf}\\[0.1cm]
   {\small Regular code: accurate guesses, but little left to catch}
 \end{frame}
 
@@ -380,7 +380,7 @@
 \begin{frame}{Who Causes the Gap?}
   \centering
   \msg{\textbf{A few hot instructions, not cold ones}}\\[0.3cm]
-  \includegraphics[width=\linewidth,height=0.56\textheight,keepaspectratio]{figs/concentration.pdf}\\[0.15cm]
+  \includegraphics[width=\linewidth,height=0.6\textheight,keepaspectratio]{figs/concentration.pdf}\\[0.15cm]
   {\small Instructions with $<$1{,}000 loads cause $\le$0.2\% of silent misses\\
    on irregular and graph code}
 \end{frame}
@@ -447,8 +447,7 @@
 \begin{frame}[c]{Plan for Checkpoint 2}
   \begin{enumerate}[leftmargin=*, label={\huge\color{mLightBrown}\arabic*}, itemsep=22pt]
     \item {\Large \textbf{Measure:} for each load, how often\\the offset's guess is right}
-    \item {\Large \textbf{Build LoGO:} a small table (8 loads, $\approx$30 bytes)\\
-          that turns the offset on only where it is right}
+    \item {\Large \textbf{Build LoGO:} a small table\\(8 loads, $\approx$30 bytes) that turns\\the offset on only where it is right}
     \item {\Large \textbf{Compare} LoGO with Berti and BOP:\\speed and accuracy}
   \end{enumerate}
 \end{frame}

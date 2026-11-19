@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1793023828.24505 "presentation.tex" "presentation.pdf" "presentation" 1793023832.96493 0
+["pdflatex"] 1793029616.41714 "presentation.tex" "presentation.pdf" "presentation" 1793029621.18453 0
   "/etc/texmf/web2c/texmf.cnf" 1786300594.09837 475 c0e671620eb5563b2130f56340a5fde8 ""
   "/usr/share/texlive/texmf-dist/fonts/enc/dvips/fira/fir_tz2nek.enc" 1570828436 2990 00f5e8fd7ed669e1063f9392d7166f8f ""
   "/usr/share/texlive/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
@@ -253,10 +253,10 @@
   "figs/fallback.pdf" 1793023589.60069 14645 262d9983e46d286e8fd8c85975bee350 ""
   "figs/gap.pdf" 1793023589.4489 17129 2f60d10127c7895fd3e220663817f3a9 ""
   "figs/speedup.pdf" 1793023589.07476 19466 6906eb31f8001e6c7a9fa315dbda398d ""
-  "presentation.aux" 1793023832.65676 2381 11fdcb5975d10db298dc759fa8d2b98f "pdflatex"
-  "presentation.nav" 1793023832.65776 1588 ea96893ea1da0ca10320f311f5a4c07d "pdflatex"
-  "presentation.out" 1793023829.74368 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
-  "presentation.tex" 1793023828.04872 21180 53ee9c68e689bb01449b3258dae7c872 ""
+  "presentation.aux" 1793029620.89113 2381 11fdcb5975d10db298dc759fa8d2b98f "pdflatex"
+  "presentation.nav" 1793029620.89213 1588 ea96893ea1da0ca10320f311f5a4c07d "pdflatex"
+  "presentation.out" 1793029617.94985 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
+  "presentation.tex" 1793029616.20977 21167 0755b5607a2fb24d3b4622166db272fc ""
   (generated)
   "presentation.aux"
   "presentation.log"
