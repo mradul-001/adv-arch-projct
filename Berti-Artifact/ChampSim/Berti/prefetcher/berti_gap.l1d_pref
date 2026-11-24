@@ -702,6 +702,7 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
 
 // ===================== gap measurement (checkpoint 1 + 2) =====================
 #include <algorithm>
+#include <bitset>
 #include <unordered_map>
 #include <vector>
 
@@ -721,11 +722,28 @@ const int RR_SIZE = 256;
 // line would stay in the cache.
 const size_t WOULD_SIZE = L1D_SET * L1D_WAY;
 
-// Two shadow learners, both firing only on silent misses:
-//   ALL: trained on every L1D demand miss (checkpoint-1 learner)
-//   SIL: trained on silent misses only
-enum { ALL = 0, SIL = 1, NUM_LEARNERS = 2 };
-const char* LEARNER_NAME[NUM_LEARNERS] = {"all", "sil"};
+// Shadow fallbacks, all firing only on silent misses (degree 1):
+//   ALL: global BOP offset trained on every L1D demand miss (checkpoint 1)
+//   SIL: global BOP offset trained on silent misses only
+//   LOW: Berti's own best delta for this IP that is NOT yet confident
+enum { ALL = 0, SIL = 1, LOW = 2, NUM_LEARNERS = 3 };
+const char* LEARNER_NAME[NUM_LEARNERS] = {"all", "sil", "low"};
+
+// Per-IP gate windows: usefulness of each block of WIN guesses an IP issued.
+const uint64_t WIN = 64;
+
+// Oracle (M4): every silent miss is a trigger. A later L1D miss on
+// trigger + d (d in [-ODMAX, ODMAX], d != 0) within the last ORACLE_WINDOW
+// triggers counts as "used" for (trigger IP, d), at most once per pair.
+const int ODMAX = 64;
+const int NUM_OD = 2 * ODMAX + 1;          // index d + ODMAX; index ODMAX unused
+const size_t TRIG_SLOTS = 8192;            // direct-mapped by line
+const uint64_t ORACLE_WINDOW = WOULD_SIZE; // same lifetime as a would-prefetch
+const size_t TOP_OFF_IPS = 256;            // per-IP offset rows printed
+const size_t TOP_WIN_IPS = 256;            // per-IP window rows printed
+const int HB = 16;                         // log2 histogram buckets
+
+inline int log2b(uint64_t x) { int b = 0; while (x > 1 && b < HB - 1) { x >>= 1; b++; } return b; }
 
 // Per-IP stats for the IP that ISSUED a (shadow) fallback guess.
 struct FbStat {
@@ -736,11 +754,12 @@ struct FbStat {
     uint64_t redundant = 0;  // guessed line was hit anyway (something else brought it)
     uint64_t saved_cycles = 0; // sum of min(lead, miss latency) over used guesses
     uint64_t covered = 0;    // silent misses of THIS IP covered by any IP's guess
+    std::vector<uint16_t> win_used, win_timely; // per block of WIN issued guesses
 };
 
-struct WouldSlot { uint64_t line = 0, seq = 0, ip = 0, t_issue = 0; };
-struct WouldInfo { uint64_t seq, ip, t_issue; };
-struct Pending { uint64_t ip, t_issue, t_miss; bool counting; };
+struct WouldSlot { uint64_t line = 0, seq = 0, ip = 0, t_issue = 0, win = 0; };
+struct WouldInfo { uint64_t seq, ip, t_issue, win; };
+struct Pending { uint64_t ip, t_issue, t_miss, win; bool counting; };
 
 struct Learner {
     // BOP state
@@ -767,6 +786,7 @@ struct Learner {
     uint64_t covered_silent = 0, covered_other = 0;
     uint64_t skipped_cached = 0, skipped_off = 0;
     uint64_t timely = 0, late = 0, saved_cycles = 0, lat_sum = 0;
+    uint64_t lead_hist[HB] = {};   // lead of used guesses (M7)
 
     std::unordered_map<uint64_t, FbStat> ips; // keyed by raw IP
 };
@@ -777,17 +797,50 @@ struct IPStat {
     uint64_t silent_misses = 0;
     uint64_t confident_loads = 0;
     bool ever_confident = false; // confident at any point, warmup included
+    // M2: why Berti was silent
+    uint64_t sil_noentry = 0, sil_nodelta = 0, sil_lowconf = 0;
+    // M6: cycles spent in this IP's silent misses
+    uint64_t silent_lat_sum = 0, silent_lat_n = 0;
+    // M4: reachability of this IP's silent misses by any oracle offset
+    uint64_t reach_same = 0, reach_other = 0, reach_same_t = 0, reach_other_t = 0;
+    uint64_t triggers = 0;
 };
+
+// M4 oracle structures
+struct TrigSlot { uint64_t line = 0, ip = 0, t = 0, seq = 0; std::bitset<NUM_OD> used; };
+struct OffStat {
+    uint32_t c[NUM_OD][4];
+    uint64_t saved[NUM_OD];
+    OffStat() { std::fill(&c[0][0], &c[0][0] + NUM_OD * 4, 0u); std::fill(saved, saved + NUM_OD, 0ull); }
+};
+// c[d][0] same-IP target, [1] other-IP target, [2] same timely, [3] other timely;
+// saved[d] = sum of min(lead, miss latency) over used (cycles a real prefetch would hide)
+struct Match { uint64_t ip; uint64_t lead; int16_t d; bool same; };
+struct PendMiss { uint64_t ip, t_miss; bool silent, counting; std::vector<Match> m; };
 
 struct State {
     Learner L[NUM_LEARNERS];
     uint64_t loads = 0, misses = 0, silent_misses = 0;
     std::unordered_map<uint64_t, IPStat> ips;
+
+    // M2
+    uint64_t sil_noentry = 0, sil_nodelta = 0, sil_lowconf = 0;
+    // M4
+    std::vector<TrigSlot> trig;
+    uint64_t trig_seq = 0;
+    std::unordered_map<uint64_t, OffStat> off;  // by trigger raw IP
+    uint64_t goff[NUM_OD][5] = {};  // 4 counts as OffStat + saved cycles
+    uint64_t reach_same = 0, reach_other = 0, reach_same_t = 0, reach_other_t = 0;
+    // M6
+    std::unordered_map<uint64_t, PendMiss> pmiss;
+    uint64_t lat_all[HB] = {}, lat_silent[HB] = {};
+    uint64_t lat_all_sum = 0, lat_all_n = 0, lat_silent_sum = 0, lat_silent_n = 0;
 };
 
 State st[NUM_CPUS];
 
 inline uint32_t rr_index(uint64_t line) { return (line ^ (line >> 8)) & (RR_SIZE - 1); }
+inline size_t trig_index(uint64_t line) { return (line ^ (line >> 13) ^ (line >> 26)) & (TRIG_SLOTS - 1); }
 
 void end_phase(Learner& s)
 {
@@ -834,7 +887,7 @@ bool in_l1d(uint32_t cpu, uint64_t line)
     return false;
 }
 
-void would_add(Learner& s, uint64_t line, uint64_t ip, uint64_t now)
+void would_add(Learner& s, uint64_t line, uint64_t ip, uint64_t now, uint64_t win)
 {
     if (s.ring.empty())
         s.ring.assign(WOULD_SIZE, WouldSlot());
@@ -845,15 +898,24 @@ void would_add(Learner& s, uint64_t line, uint64_t ip, uint64_t now)
             s.would.erase(it);
     }
     s.seq++;
-    slot.line = line; slot.seq = s.seq; slot.ip = ip; slot.t_issue = now;
-    WouldInfo wi = {s.seq, ip, now};
+    slot.line = line; slot.seq = s.seq; slot.ip = ip; slot.t_issue = now; slot.win = win;
+    WouldInfo wi = {s.seq, ip, now, win};
     s.would[line] = wi;
     s.head = (s.head + 1) % WOULD_SIZE;
 }
 
-// Per-access work for one learner.
+inline void win_bump(std::vector<uint16_t>& v, uint64_t w)
+{
+    if (v.size() <= w)
+        v.resize(w + 1, 0);
+    if (v[w] < 65535)
+        v[w]++;
+}
+
+// Per-access work for one learner. guess_delta: the line delta to guess on a
+// silent miss (0 = no guess). For ALL/SIL it is the learner's best offset.
 void step(uint32_t cpu, Learner& s, int which, uint64_t raw_ip, uint64_t line,
-          bool hit, bool silent_miss, bool counting, uint64_t now)
+          bool hit, bool silent_miss, bool counting, uint64_t now, int64_t low_delta)
 {
     // 1) Would an earlier guess have covered this access? Credit the issuing IP.
     std::unordered_map<uint64_t, WouldInfo>::iterator it = s.would.find(line);
@@ -862,11 +924,13 @@ void step(uint32_t cpu, Learner& s, int which, uint64_t raw_ip, uint64_t line,
         s.would.erase(it);
         if (!hit) {
             // Timeliness is decided when this miss fills (see on_fill).
-            Pending p = {wi.ip, wi.t_issue, now, counting};
+            Pending p = {wi.ip, wi.t_issue, now, wi.win, counting};
             s.pending[line] = p;
             if (counting) {
                 s.useful++;
-                s.ips[wi.ip].used++;
+                FbStat& f = s.ips[wi.ip];
+                f.used++;
+                win_bump(f.win_used, wi.win);
                 if (silent_miss) {
                     s.covered_silent++;
                     s.ips[raw_ip].covered++;
@@ -880,33 +944,88 @@ void step(uint32_t cpu, Learner& s, int which, uint64_t raw_ip, uint64_t line,
         }
     }
 
-    // 2) Train.
-    if (which == ALL ? !hit : silent_miss)
+    // 2) Train (global learners only).
+    if (which == ALL ? !hit : (which == SIL && silent_miss))
         learn(s, line);
 
     // 3) Guess on silent misses only.
     if (silent_miss) {
-        if (!s.on) {
+        int64_t delta = which == LOW ? low_delta : (s.on ? s.best_offset : 0);
+        if (delta == 0) {
             if (counting)
                 s.skipped_off++;
         } else {
-            uint64_t target = line + s.best_offset;
+            uint64_t target = line + delta;
             if (in_l1d(cpu, target) || s.would.count(target)) {
                 if (counting)
                     s.skipped_cached++;
             } else {
-                would_add(s, target, raw_ip, now);
+                uint64_t win = 0;
                 if (counting) {
+                    FbStat& f = s.ips[raw_ip];
+                    win = f.issued / WIN;
                     s.issued++;
-                    s.ips[raw_ip].issued++;
+                    f.issued++;
                 }
+                would_add(s, target, raw_ip, now, win);
             }
         }
     }
 }
 
+// M2 + M3: look at Berti's table for this (hashed) IP without changing it.
+// Returns 0 = no entry, 1 = entry but no delta, 2 = has deltas (none confident).
+// best_delta: the unconfident delta with the highest raw confidence.
+int berti_state(uint32_t cpu, uint64_t hip, int64_t& best_delta)
+{
+    best_delta = 0;
+    std::map<uint64_t, vberti_t*>::iterator it = vbertit[cpu].find(hip);
+    if (it == vbertit[cpu].end())
+        return 0;
+    stride_t* aux = it->second->stride;
+    uint64_t best_conf = 0;
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        if (aux[i].stride != 0 && (best_delta == 0 || aux[i].conf > best_conf)) {
+            best_conf = aux[i].conf;
+            best_delta = aux[i].stride;
+        }
+    return best_delta == 0 ? 1 : 2;
+}
+
+// M4: oracle offsets for a miss on `line`.
+void oracle_target(State& s, uint64_t line, uint64_t raw_ip, uint64_t now, PendMiss& pm)
+{
+    if (s.trig.empty())
+        return;
+    for (int d = -ODMAX; d <= ODMAX; d++) {
+        if (d == 0)
+            continue;
+        uint64_t base = line - d;
+        TrigSlot& t = s.trig[trig_index(base)];
+        if (t.line != base || t.seq == 0 || s.trig_seq - t.seq >= ORACLE_WINDOW)
+            continue;
+        int di = d + ODMAX;
+        if (t.used[di])
+            continue;
+        t.used[di] = true;
+        Match m = {t.ip, now - t.t, (int16_t) d, t.ip == raw_ip};
+        pm.m.push_back(m);
+    }
+}
+
+void oracle_trigger(State& s, uint64_t line, uint64_t raw_ip, uint64_t now, bool counting)
+{
+    if (s.trig.empty())
+        s.trig.assign(TRIG_SLOTS, TrigSlot());
+    TrigSlot& t = s.trig[trig_index(line)];
+    s.trig_seq++;
+    t.line = line; t.ip = raw_ip; t.t = now; t.seq = s.trig_seq; t.used.reset();
+    if (counting)
+        s.ips[raw_ip].triggers++;
+}
+
 // Called for every L1D demand load, before Berti changes any state.
-void record(uint32_t cpu, uint64_t raw_ip, uint64_t line, bool hit, bool confident)
+void record(uint32_t cpu, uint64_t raw_ip, uint64_t hip, uint64_t line, bool hit, bool confident)
 {
     State& s = st[cpu];
     IPStat& ip = s.ips[raw_ip];
@@ -916,6 +1035,9 @@ void record(uint32_t cpu, uint64_t raw_ip, uint64_t line, bool hit, bool confide
     bool counting = warmup_complete[cpu];
     bool silent_miss = !hit && !confident;
     uint64_t now = current_core_cycle[cpu];
+
+    int64_t low_delta = 0;
+    int bstate = silent_miss ? berti_state(cpu, hip, low_delta) : 0;
 
     if (counting) {
         s.loads++;
@@ -928,12 +1050,24 @@ void record(uint32_t cpu, uint64_t raw_ip, uint64_t line, bool hit, bool confide
             if (silent_miss) {
                 s.silent_misses++;
                 ip.silent_misses++;
+                if (bstate == 0)      { s.sil_noentry++; ip.sil_noentry++; }
+                else if (bstate == 1) { s.sil_nodelta++; ip.sil_nodelta++; }
+                else                  { s.sil_lowconf++; ip.sil_lowconf++; }
             }
         }
     }
 
     for (int k = 0; k < NUM_LEARNERS; k++)
-        step(cpu, s.L[k], k, raw_ip, line, hit, silent_miss, counting, now);
+        step(cpu, s.L[k], k, raw_ip, line, hit, silent_miss, counting, now, low_delta);
+
+    // M4 + M6: track every miss until it fills (first access to the line only).
+    if (!hit && !s.pmiss.count(line)) {
+        PendMiss& pm = s.pmiss[line];
+        pm.ip = raw_ip; pm.t_miss = now; pm.silent = silent_miss; pm.counting = counting;
+        oracle_target(s, line, raw_ip, now, pm);
+    }
+    if (silent_miss)
+        oracle_trigger(s, line, raw_ip, now, counting);
 }
 
 // Called for every L1D fill. Demand fills feed the RR tables (BOP's
@@ -943,9 +1077,10 @@ void record(uint32_t cpu, uint64_t raw_ip, uint64_t line, bool hit, bool confide
 //   timely if lead >= lat, else late; saved = min(lead, lat).
 void on_fill(uint32_t cpu, uint64_t line, bool prefetch)
 {
+    State& S = st[cpu];
     uint64_t now = current_core_cycle[cpu];
     for (int k = 0; k < NUM_LEARNERS; k++) {
-        Learner& s = st[cpu].L[k];
+        Learner& s = S.L[k];
         if (!prefetch)
             s.rr[rr_index(line)] = line;
         std::unordered_map<uint64_t, Pending>::iterator it = s.pending.find(line);
@@ -959,17 +1094,63 @@ void on_fill(uint32_t cpu, uint64_t line, bool prefetch)
         uint64_t lat = now > p.t_miss ? now - p.t_miss : 0;
         uint64_t saved = std::min(lead, lat);
         FbStat& f = s.ips[p.ip];
-        if (lead >= lat) { s.timely++; f.timely++; }
+        if (lead >= lat) { s.timely++; f.timely++; win_bump(f.win_timely, p.win); }
         else             { s.late++;   f.late++;   }
         s.saved_cycles += saved;
         f.saved_cycles += saved;
         s.lat_sum += lat;
+        s.lead_hist[log2b(lead)]++;
     }
+
+    // M4 + M6
+    std::unordered_map<uint64_t, PendMiss>::iterator pit = S.pmiss.find(line);
+    if (pit == S.pmiss.end())
+        return;
+    PendMiss& pm = pit->second;
+    if (pm.counting) {
+        uint64_t lat = now > pm.t_miss ? now - pm.t_miss : 0;
+        S.lat_all[log2b(lat)]++; S.lat_all_sum += lat; S.lat_all_n++;
+        IPStat& tip = S.ips[pm.ip];
+        if (pm.silent) {
+            S.lat_silent[log2b(lat)]++; S.lat_silent_sum += lat; S.lat_silent_n++;
+            tip.silent_lat_sum += lat; tip.silent_lat_n++;
+        }
+        bool rs = false, ro = false, rst = false, rot = false;
+        for (size_t i = 0; i < pm.m.size(); i++) {
+            const Match& m = pm.m[i];
+            bool t = m.lead >= lat;
+            int di = m.d + ODMAX;
+            int col = m.same ? 0 : 1;
+            OffStat& os = S.off[m.ip];
+            os.c[di][col]++;
+            S.goff[di][col]++;
+            uint64_t sv = std::min(m.lead, lat);
+            os.saved[di] += sv;
+            S.goff[di][4] += sv;
+            if (t) { os.c[di][col + 2]++; S.goff[di][col + 2]++; }
+            if (m.same) { rs = true; rst = rst || t; } else { ro = true; rot = rot || t; }
+        }
+        if (pm.silent) {
+            if (rs) { S.reach_same++; tip.reach_same++; }
+            else if (ro) { S.reach_other++; tip.reach_other++; }
+            if (rst) { S.reach_same_t++; tip.reach_same_t++; }
+            else if (rot) { S.reach_other_t++; tip.reach_other_t++; }
+        }
+    }
+    S.pmiss.erase(pit);
 }
 
 bool by_misses(const std::pair<uint64_t, IPStat>& a, const std::pair<uint64_t, IPStat>& b)
 {
     return a.second.misses > b.second.misses;
+}
+
+void print_hist(const char* name, const uint64_t* h)
+{
+    std::cout << "GAP hist " << name << ":";
+    for (int i = 0; i < HB; i++)
+        std::cout << " " << h[i];
+    std::cout << std::endl;
 }
 
 void print_learner(const Learner& s, const char* name)
@@ -1032,8 +1213,24 @@ void print(uint32_t cpu)
     for (int k = 0; k < NUM_LEARNERS; k++)
         print_learner(s.L[k], LEARNER_NAME[k]);
 
+    // M2, M4, M6 totals.
+    std::cout << "GAP silence noentry= " << s.sil_noentry << " nodelta= " << s.sil_nodelta
+              << " lowconf= " << s.sil_lowconf << std::endl;
+    std::cout << "GAP reach same= " << s.reach_same << " other= " << s.reach_other
+              << " same_timely= " << s.reach_same_t << " other_timely= " << s.reach_other_t
+              << std::endl;
+    std::cout << "GAP latency all_sum= " << s.lat_all_sum << " all_n= " << s.lat_all_n
+              << " silent_sum= " << s.lat_silent_sum << " silent_n= " << s.lat_silent_n << std::endl;
+    print_hist("lat_all", s.lat_all);
+    print_hist("lat_silent", s.lat_silent);
+    for (int k = 0; k < NUM_LEARNERS; k++) {
+        std::string n = std::string("lead_") + LEARNER_NAME[k];
+        print_hist(n.c_str(), s.L[k].lead_hist);
+    }
+
     // Per-IP table. First 7 columns as in checkpoint 1 (fb_covered = ALL).
     // Then per learner: guesses this IP issued and what became of them.
+    // Then M2/M4/M6 per IP.
     std::cout << "GAP_IP_BEGIN" << std::endl;
     std::cout << "ip,loads,misses,silent_misses,confident_loads,ever_confident,fb_covered";
     for (int k = 0; k < NUM_LEARNERS; k++) {
@@ -1042,6 +1239,8 @@ void print(uint32_t cpu)
                   << n << "_late," << n << "_redundant," << n << "_saved_cycles,"
                   << n << "_covered";
     }
+    std::cout << ",sil_noentry,sil_nodelta,sil_lowconf,silent_lat_sum,silent_lat_n,"
+                 "triggers,reach_same,reach_other,reach_same_t,reach_other_t";
     std::cout << std::endl;
     for (size_t i = 0; i < rows.size(); i++) {
         const IPStat& r = rows[i].second;
@@ -1062,9 +1261,67 @@ void print(uint32_t cpu)
                       << f.late << "," << f.redundant << "," << f.saved_cycles << ","
                       << f.covered;
         }
+        std::cout << "," << r.sil_noentry << "," << r.sil_nodelta << "," << r.sil_lowconf
+                  << "," << r.silent_lat_sum << "," << r.silent_lat_n << "," << r.triggers
+                  << "," << r.reach_same << "," << r.reach_other
+                  << "," << r.reach_same_t << "," << r.reach_other_t;
         std::cout << std::endl;
     }
     std::cout << "GAP_IP_END" << std::endl;
+
+    // M4: global oracle offsets, then per-IP rows for the top IPs by silent misses.
+    std::cout << "GAP_OFF_BEGIN" << std::endl;
+    std::cout << "ip,d,same,other,same_timely,other_timely,saved_cycles" << std::endl;
+    for (int di = 0; di < NUM_OD; di++)
+        if (di != ODMAX && (s.goff[di][0] || s.goff[di][1]))
+            std::cout << "all," << di - ODMAX << "," << s.goff[di][0] << "," << s.goff[di][1]
+                      << "," << s.goff[di][2] << "," << s.goff[di][3] << "," << s.goff[di][4] << std::endl;
+    std::vector<std::pair<uint64_t, IPStat> > srt = rows;
+    std::sort(srt.begin(), srt.end(),
+              [](const std::pair<uint64_t, IPStat>& a, const std::pair<uint64_t, IPStat>& b) {
+                  return a.second.silent_misses > b.second.silent_misses; });
+    for (size_t i = 0; i < srt.size() && i < TOP_OFF_IPS; i++) {
+        if (srt[i].second.silent_misses == 0)
+            break;
+        std::unordered_map<uint64_t, OffStat>::const_iterator it = s.off.find(srt[i].first);
+        if (it == s.off.end())
+            continue;
+        for (int di = 0; di < NUM_OD; di++) {
+            const uint32_t* c = it->second.c[di];
+            if (di != ODMAX && (c[0] || c[1]))
+                std::cout << std::hex << "0x" << srt[i].first << std::dec << "," << di - ODMAX
+                          << "," << c[0] << "," << c[1] << "," << c[2] << "," << c[3]
+                          << "," << it->second.saved[di] << std::endl;
+        }
+    }
+    std::cout << "GAP_OFF_END" << std::endl;
+
+    // M5: per-IP windows of WIN guesses ("used/timely" per window) for the
+    // top IPs by guesses issued, for each learner.
+    std::cout << "GAP_WIN_BEGIN " << WIN << std::endl;
+    for (int k = 0; k < NUM_LEARNERS; k++) {
+        std::vector<std::pair<uint64_t, const FbStat*> > fr;
+        for (std::unordered_map<uint64_t, FbStat>::const_iterator it = s.L[k].ips.begin();
+             it != s.L[k].ips.end(); ++it)
+            if (it->second.issued)
+                fr.push_back(std::make_pair(it->first, &it->second));
+        std::sort(fr.begin(), fr.end(),
+                  [](const std::pair<uint64_t, const FbStat*>& a, const std::pair<uint64_t, const FbStat*>& b) {
+                      return a.second->issued > b.second->issued; });
+        for (size_t i = 0; i < fr.size() && i < TOP_WIN_IPS; i++) {
+            const FbStat& f = *fr[i].second;
+            std::cout << LEARNER_NAME[k] << "," << std::hex << "0x" << fr[i].first << std::dec
+                      << "," << f.issued << ",";
+            size_t nw = (f.issued + WIN - 1) / WIN;
+            for (size_t w = 0; w < nw; w++) {
+                uint16_t u = w < f.win_used.size() ? f.win_used[w] : 0;
+                uint16_t t = w < f.win_timely.size() ? f.win_timely[w] : 0;
+                std::cout << (w ? " " : "") << u << "/" << t;
+            }
+            std::cout << std::endl;
+        }
+    }
+    std::cout << "GAP_WIN_END" << std::endl;
 }
 
 } // namespace gap
@@ -1110,7 +1367,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 if (probe[i].stride != 0 &&
                     (probe[i].rpl == L1 || probe[i].rpl == L2 || probe[i].rpl == L2R))
                     confident = true;
-        gap::record(cpu, raw_ip, line_addr, cache_hit, confident);
+        gap::record(cpu, raw_ip, ip, line_addr, cache_hit, confident);
     }
 
     if (!cache_hit)
